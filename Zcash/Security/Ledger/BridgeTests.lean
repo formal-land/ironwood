@@ -167,30 +167,15 @@ theorem path_iff_guarded_smoke
 
 /-- The circuit-level postcondition refines directly to the ledger action alternative. -/
 theorem spec_post_bridge_smoke {MSG SIG : Type*}
-    (verify : PallasGroup → MSG → SIG → Prop)
-    {input : Halo2.Value PrivateInputs Fp} {wit : ActionData}
-    (h : SpecPost orchardGenerators orchardBases input () wit) :
+    (verify bverify : PallasGroup → MSG → SIG → Prop)
+    {wit : ActionData}
+    (h : SpecPost orchardGenerators orchardBases () () wit) :
     ActionBreak wit ∨
       ∃ inst w, PublicProjection wit inst ∧
-        ActionSatisfied (Pool.primitives verify) Pool.keyBinding inst w ∧
+        ActionSatisfied (Pool.primitives verify bverify) Pool.keyBinding inst w ∧
         CrossAddressSatisfied wit w ∧
         EnableFlagsSatisfied wit w :=
-  specPost_to_ledger verify h
-
-/-- Keep the exported end-to-end soundness theorem at its intended public shape. -/
-theorem circuit_soundness_bridge_smoke {MSG SIG : Type*}
-    (verify : PallasGroup → MSG → SIG → Prop)
-    (cfg : Config) (i₀ : RegionIndex)
-    (env : Placed Environment Fp) (input : Var PrivateInputs Fp)
-    (henv : EnvAssumptions orchardGenerators cfg env)
-    (hconstraints : Constraints env.place env.env
-      ((mainPost orchardGenerators orchardBases cfg input).operations i₀) i₀) :
-    ActionBreak (extract cfg input i₀ env) ∨
-      ∃ inst w, PublicProjection (extract cfg input i₀ env) inst ∧
-        ActionSatisfied (Pool.primitives verify) Pool.keyBinding inst w ∧
-        CrossAddressSatisfied (extract cfg input i₀ env) w ∧
-        EnableFlagsSatisfied (extract cfg input i₀ env) w :=
-  circuit_soundness_to_ledger verify cfg i₀ env input henv hconstraints
+  specPost_to_ledger verify bverify h
 
 open Zcash.Meta
 
@@ -203,44 +188,87 @@ open Zcash.Meta
 -- field-arithmetic instances.  The plain-`def` check is what certifies that
 -- choice stays erased: had it touched the data path, the definition could not
 -- have compiled (`Zcash.Meta.AxiomCheck` documents this convention).
-assert_computable classifyMerkle +choice
-assert_computable classifyAction +choice
+assert_computable Zcash.Security.Ledger.Bridge.classifyMerkle +choice
+assert_computable Zcash.Security.Ledger.Bridge.classifyAction +choice
 
-assert_axioms value_positive
-assert_axioms value_negative
-assert_axioms value_equal
-assert_axioms zero_encodings_distinct
-assert_axioms zero_encodings_decode_equal
-assert_axioms dummy_spend_merkle_vacuous
-assert_axioms path_layers_defined
-assert_axioms cross_address_flag_zero
-assert_axioms cross_address_flag_one
-assert_axioms cross_address_flag_arbitrary_nonzero
-assert_axioms enable_spend_disabled_forces_zero
-assert_axioms enable_output_disabled_forces_zero
+assert_axioms Zcash.Security.Ledger.BridgeTests.value_positive
+assert_axioms Zcash.Security.Ledger.BridgeTests.value_negative
+assert_axioms Zcash.Security.Ledger.BridgeTests.value_equal
+assert_axioms Zcash.Security.Ledger.BridgeTests.zero_encodings_distinct
+assert_axioms Zcash.Security.Ledger.BridgeTests.zero_encodings_decode_equal
+assert_axioms Zcash.Security.Ledger.BridgeTests.dummy_spend_merkle_vacuous
+assert_axioms Zcash.Security.Ledger.BridgeTests.path_layers_defined
+assert_axioms Zcash.Security.Ledger.BridgeTests.cross_address_flag_zero
+assert_axioms Zcash.Security.Ledger.BridgeTests.cross_address_flag_one
+assert_axioms Zcash.Security.Ledger.BridgeTests.cross_address_flag_arbitrary_nonzero
+assert_axioms Zcash.Security.Ledger.BridgeTests.enable_spend_disabled_forces_zero
+assert_axioms Zcash.Security.Ledger.BridgeTests.enable_output_disabled_forces_zero
 
 -- The refinements instantiated at the deployed Pallas bases sit one tier up: their proofs
 -- consume `native_decide` certificates — the fixed-base window tables and CompElliptic's
 -- Pallas point count (`pallas_natCard`) — so `+native` is the whole of the extra budget.
-assert_axioms alpha_scaling +native
-assert_axioms value_commit_positive_scaling +native
-assert_axioms value_commit_negative_scaling +native
-assert_axioms or_break_iff_guarded_smoke +native
-assert_axioms path_iff_guarded_smoke +native
-assert_axioms guardedPath_of_exact +native
-assert_axioms spec_post_bridge_smoke +native
-assert_axioms circuit_soundness_bridge_smoke +native
+assert_axioms Zcash.Security.Ledger.BridgeTests.alpha_scaling +native(
+  CompElliptic.Curves.Pasta.Pallas.q_nsmul_Gpt,
+  Zcash.Circuits.Ecc.MulFixed.Certs.spendAuthGCert_check)
+assert_axioms Zcash.Security.Ledger.BridgeTests.value_commit_positive_scaling +native(
+  CompElliptic.Curves.Pasta.Pallas.q_nsmul_Gpt,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitVCert_check)
+assert_axioms Zcash.Security.Ledger.BridgeTests.value_commit_negative_scaling +native(
+  CompElliptic.Curves.Pasta.Pallas.q_nsmul_Gpt,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitVCert_check)
+assert_axioms Zcash.Security.Ledger.BridgeTests.or_break_iff_guarded_smoke +native(
+  CompElliptic.Curves.Pasta.Pallas.q_nsmul_Gpt,
+  Zcash.Circuits.Ecc.MulFixed.Certs.commitIvkRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.noteCommitRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.nullifierKCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.spendAuthGCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitVCert_check)
+assert_axioms Zcash.Security.Ledger.BridgeTests.path_iff_guarded_smoke
+assert_axioms Zcash.Security.Ledger.Bridge.guardedPath_of_exact +native(
+  CompElliptic.Curves.Pasta.Pallas.q_nsmul_Gpt,
+  Zcash.Circuits.Ecc.MulFixed.Certs.commitIvkRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.noteCommitRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.nullifierKCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.spendAuthGCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitVCert_check)
+assert_axioms Zcash.Security.Ledger.BridgeTests.spec_post_bridge_smoke +native(
+  CompElliptic.Curves.Pasta.Pallas.q_nsmul_Gpt,
+  Zcash.Security.Ledger.Pool.unc_thirteen_not_isSquare,
+  Zcash.Circuits.Ecc.MulFixed.Certs.commitIvkRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.noteCommitRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.nullifierKCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.spendAuthGCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitVCert_check)
 
 -- The onward reduction from classified break data to the games-facing
 -- discrete-log-relation object is likewise a computation: the coefficients are a
 -- plain compiled `def` over the break datum, with the relation and nontriviality
 -- facts in erased `Prop` fields (same `+choice` reading as the classifier above).
-assert_computable breakCoeffs +choice
+assert_computable Zcash.Security.Ledger.Bridge.breakCoeffs +choice
 -- `relationOfBreakData` and `classifyRelation` are likewise plain compiled `def`s, asserted
 -- computable per the breaks-as-computed-data convention.  Their erased `Prop` fields
 -- additionally carry the deployed base points' on-curve certificates, which are
 -- `native_decide` checks, so they sit one tier up at `+choice +native`.
-assert_computable relationOfBreakData +choice +native
-assert_computable classifyRelation +choice +native
+assert_computable Zcash.Security.Ledger.Bridge.relationOfBreakData +choice +native(
+  CompElliptic.Curves.Pasta.Pallas.q_nsmul_Gpt,
+  Zcash.Circuits.Ecc.MulFixed.Certs.commitIvkRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.noteCommitRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.nullifierKCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.spendAuthGCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitVCert_check)
+assert_computable Zcash.Security.Ledger.Bridge.classifyRelation +choice +native(
+  CompElliptic.Curves.Pasta.Pallas.q_nsmul_Gpt,
+  Zcash.Circuits.Ecc.MulFixed.Certs.commitIvkRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.noteCommitRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.nullifierKCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.spendAuthGCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitRCert_check,
+  Zcash.Circuits.Ecc.MulFixed.Certs.valueCommitVCert_check)
 
 end Zcash.Security.Ledger.BridgeTests

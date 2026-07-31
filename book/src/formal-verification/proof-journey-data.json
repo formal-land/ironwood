@@ -21,6 +21,11 @@
       "label": "PR #30 decode head",
       "ref": "d2a01b30c4475827e8a2620dea6cfb876561c716",
       "fetch": "pull/30/head"
+    },
+    "runtimeAgmStack": {
+      "label": "PR #114 runtime AGM head",
+      "ref": "9675704b8a953cb7e8a0c33b420fd1818342fe0c",
+      "fetch": "pull/114/head"
     }
   },
   "prs": {
@@ -71,6 +76,13 @@
       "title": "Fully adaptive Fiat-Shamir adversary",
       "url": "https://github.com/zcash/ironwood/pull/56",
       "sha": "456c386",
+      "lane": "stack"
+    },
+    "114": {
+      "label": "PR #114",
+      "title": "Primary straight-line AGM and runtime bounds",
+      "url": "https://github.com/zcash/ironwood/pull/114",
+      "sha": "cbbcb0d",
       "lane": "stack"
     },
     "27": {
@@ -279,10 +291,13 @@
       "chapter": "AGM to discrete log",
       "title": "Price the relation branch",
       "claim": "The algebraic Fiat-Shamir game produces PR #28's deployed instances, states binding as a computable value mismatch against the carried aggregate opening (never as nonexistence of an opening, which holds vacuously in a prime-order group), and feeds every mismatch run's explicit relation to the plain-DL probability bound.",
-      "summary": "PR #28 defines AlgebraicDForkCert, the deployed AGM instance, and the fixed-slot relation-to-DL reduction. PR #56 supplies the executable adaptive side: every adversary-emitted group point carries a basis representation; recursiveAlgebraicFork computes the fork tree from an oracle table and finite tape; algebraicForkCertAttempt_valid proves the resulting certificate valid; and computedDeployedAlgebraicInstance packages it for PR #28. The final theorem bounds the real binding probability by query loss, the z = 0 slice, and the plain-DL term.",
+      "summary": "The programmed-basis relation-to-DL reduction plants the challenge in every basis slot and loses only one 1/|F| hyperplane. The live straight-line and bare-adaptive Action finders use executable outcomes and explicit finite-resource profiles. The earlier recursive finder remains visible only in the pinned historical stages; #142 removed it from the live reduction stack.",
       "nodes": [
         "relation",
         "fsAdversary",
+        "straightAdapter",
+        "directCost",
+        "securityBound",
         "recursiveExtractor",
         "algCert",
         "algInstance",
@@ -293,7 +308,8 @@
         "dlbound",
         "agm_dl",
         "DLhard",
-        "h2cRO"
+        "h2cRO",
+        "actionTerminal"
       ],
       "theorems": [
         {
@@ -327,14 +343,9 @@
           "source": "agmStack"
         },
         {
-          "symbol": "orchardDeployedAlgebraicForkingFixedSlot",
-          "path": "Zcash/Snark/Soundness/AGM/ProbabilityVesta.lean",
-          "source": "agmStack"
-        },
-        {
-          "symbol": "fixedSlotExtractOrMiss",
+          "symbol": "programmedExtractOrMiss",
           "path": "Zcash/Snark/Soundness/AGM/Adapter.lean",
-          "source": "agmStack"
+          "source": "runtimeAgmStack"
         },
         {
           "symbol": "orchard_deployed_relation_set_eq_relSet",
@@ -380,24 +391,89 @@
           "symbol": "binding_prob_le_of_generatorRO_textbookDL",
           "path": "Zcash/Snark/Soundness/Forking/Adversary/Algebraic.lean",
           "source": "fsStack"
+        },
+        {
+          "symbol": "relationWithCoins_prob_le_of_truncated_textbookDL",
+          "path": "Zcash/Snark/Soundness/AGM/ProbabilityCoins.lean",
+          "source": "runtimeAgmStack"
+        },
+        {
+          "symbol": "def ofCovered",
+          "path": "Zcash/Snark/Soundness/Composition/StraightLineDeployed.lean",
+          "source": "runtimeAgmStack"
+        },
+        {
+          "symbol": "orchard_deployed_knowledge_error_captured_straightLine_direct_generatorRO",
+          "path": "Zcash/Snark/Fixtures/MultiAction/StraightLineKnowledgeError.lean",
+          "source": "runtimeAgmStack"
+        },
+        {
+          "symbol": "straightLine_consensus_2pow123_workFactor_generatorRO",
+          "path": "Zcash/Snark/Fixtures/StraightLineMaxShapeBounds.lean",
+          "source": "runtimeAgmStack"
+        },
+        {
+          "symbol": "StraightLineDirectDlogProfile.solverCost_le",
+          "path": "Zcash/Snark/Soundness/AGM/StraightLineFiniteSecurity.lean",
+          "source": "runtimeAgmStack"
+        },
+        {
+          "symbol": "orchard_action_knowledgeFailure_adaptive_2pow123_workFactor_generatorRO_for",
+          "path": "Zcash/Snark/Fixtures/MultiAction/ActionCapstone.lean",
+          "source": "runtimeAgmStack"
+        },
+        {
+          "symbol": "adaptiveActionKnowledgeExtractor",
+          "path": "Zcash/Circuits/Integration/AdaptiveActionEvent.lean",
+          "source": "runtimeAgmStack"
+        },
+        {
+          "symbol": "actionKnowledgeExtractor",
+          "path": "Zcash/Circuits/Integration/StraightLineActionTerminal.lean",
+          "source": "runtimeAgmStack"
+        },
+        {
+          "symbol": "actionKnowledgeFailure_prob_le_of_base_union_bound",
+          "path": "Zcash/Circuits/Integration/StraightLineActionEvent.lean",
+          "source": "runtimeAgmStack"
+        },
+        {
+          "symbol": "event_measure_le_of_bias",
+          "path": "Zcash/Snark/Soundness/Forking/Oracle.lean",
+          "source": "runtimeAgmStack"
+        },
+        {
+          "symbol": "adaptiveActionCachedProvenanceLog_length_le",
+          "path": "Zcash/Circuits/Integration/AdaptiveActionEvent.lean",
+          "source": "runtimeAgmStack"
+        },
+        {
+          "symbol": "adaptiveActionKnowledgeExtractorCalls_le_traversalSlots",
+          "path": "Zcash/Circuits/Integration/AdaptiveActionEvent.lean",
+          "source": "runtimeAgmStack"
+        },
+        {
+          "symbol": "AdaptiveActionDirectDlogProfile.knowledgeExtractorCost_le",
+          "path": "Zcash/Circuits/Integration/AdaptiveActionEvent.lean",
+          "source": "runtimeAgmStack"
         }
       ],
       "prs": [
         "28",
-        "56"
+        "56",
+        "114"
       ],
       "proves": [
         "Every group point in the adaptive Fiat-Shamir adversary's proof output carries its representation over (g,U,W).",
-        "The recursive extractor computes an AlgebraicDForkCert from explicit oracle and tape coins, and every returned certificate records real accepting runs.",
-        "Every computed certificate is valid for PR #28's deployed instance, with no Classical.choice at the producer boundary.",
-        "On a real binding run - acceptance while the accepted value disagrees with the carried aggregate opening - every produced instance yields an explicit relation: the kernel's relation branch, or the commitment collision between its clean opening and the carried opening.",
-        "The full real binding probability is bounded by extraction loss, the z = 0 slice, and the fixed-slot DL term.",
-        "The fixed-slot relation-to-discrete-log transformation is deterministic and its miss refers to the same relation.",
-        "For distinct parameter queries, the Fiat-Shamir binding event in the uniform generator-RO model is bounded by the discrete-log advantage."
+        "The pinned historical stack records how the retired recursive extractor computed an AlgebraicDForkCert; the live reduction no longer imports that route.",
+        "Every binding mismatch yields explicit relation data, and the programmed-basis conversion loses only one 1/|F| miss hyperplane.",
+        "The straight-line constraint finder has a pointwise four-run bound; the composed sequential Action finder uses six runs, while the bare-adaptive Action knowledge outcome caches each provenance aggregate's output and annotation log and charges eight independently traversed slots.",
+        "The Action knowledge extractors are executable and return the actual private witnesses for every proof in the bundle together with proofs that they satisfy the compiled Action specification; both the adaptive and straight-line/sequential relation projections share their route's data-bearing outcome.",
+        "The direct profiles separately account for random-oracle, group, and direct-coordinate work while leaving the finite-security Vesta DLOG advantage as a caller premise.",
+        "For every numProofs at or below Orchard's consensus maximum, the generic adaptive Action knowledge endpoint bounds verifier acceptance when executable private-witness extraction fails by Adv_DLOG(2^127,2^127) + 2^-83, prices all five semantic challenge surfaces, profiles the shared extractor, and exposes an explicit PMFEventBiasLE transport conjunct; it requires no externally supplied traces, cuts, or views."
       ],
       "residuals": [
-        "Identify deployed Blake2b and halo2's concrete hash-to-curve with their modeled random oracles, and assume Vesta DL hardness.",
-        "The extractor has an unconditional worst-case pointwise run bound and, under fork spread, a formalized expected-run bound; only the unconditional field-uniform AFK expected-time bound that removes fork spread is not formalized."
+        "Identify Blake2b and halo2's concrete hash-to-curve with their modeled random oracles; supply finite-security Vesta DL hardness and implementation work bounds; and identify the extracted circuit private witnesses and compiled Action specification with the ledger-level Orchard witness relation. The result covers represented online-AGM adversaries, not arbitrary non-algebraic random-oracle adversaries."
       ],
       "durationMs": 10000
     },
@@ -528,11 +604,6 @@
         {
           "symbol": "orchard_verifier_vesta_forking_constraint_adaptive_rewind_xgood",
           "path": "Zcash/Snark/Soundness/Vesta.lean"
-        },
-        {
-          "symbol": "orchard_verifier_sound_vesta_computed",
-          "path": "Zcash/Snark/Soundness/Composition/Bridge.lean",
-          "source": "decodeStack"
         },
         {
           "symbol": "snarkExtraction_prob_le_of_generatorRO_textbookDL_decomposed",

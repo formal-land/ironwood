@@ -72,6 +72,25 @@ axiom: CompElliptic's curve point-count, a closed computational fact discharged 
 soundness (Pallas). The `+native` flag on the corresponding build-time checks records
 exactly which endpoints carry it.
 
+**`@[csimp]` replacement lemmas** get their own `assert_axioms` entries in
+`Zcash/TrustBoundary.lean`, enforced by `scripts/check_csimp_census.sh` in CI: the compiler
+applies a csimp substitution in all downstream compiled code, but the axioms of the lemma's
+own proof are not propagated into downstream `native_decide` axiom tracking (
+[lean4#7463](https://github.com/leanprover/lean4/issues/7463)), so the check must sit on the
+lemma itself. The underlying mechanism study — what `native_decide`, the interpreter, and
+precompiled native code actually trust — is
+[`design/lean-native-trust-research.md`](https://github.com/daira/CompElliptic/blob/main/design/lean-native-trust-research.md)
+in the CompElliptic repository.
+
+**Native-executing checks are opt-in.** Executing a check through locally compiled native
+code (a `precompileModules` dylib — ours, or the CompElliptic pin's) trusts the C emitter,
+the local C toolchain, and the loader, coarse-grained and with no axiom trace. Loading a
+lane's dylib is inseparable from elaborating modules that import it, so the enforced
+invariant sits at the level of checks: no module whose import closure reaches a lane module
+may contain an evaluation-based check (`#eval`, `#guard`, `native_decide`) unless explicitly
+opted in, enforced by `scripts/check_native_optin.py` in CI. Appendix C of the research
+document linked above records the observed Lake behaviour behind this rule.
+
 **Concrete, closed facts with no free variables** may additionally use `native_decide`
 (which discharges a goal by running compiled native code, adding a compiler-trust axiom) and
 the kernel's GMP-backed bignum arithmetic. The principal such fact in this repository is the
@@ -82,11 +101,14 @@ curve-arithmetic facts (cardinalities, primality certificates). Such facts are i
 re-checkable (another implementation, or hand computation, would compute the same result),
 so a miscompiled or buggy oracle could in principle be caught by disagreement.
 
-These boundaries are *checked at build time*, not merely documented. `Zcash.TrustBoundary` is a
-single top-level census that carries the whole library's trust claims — the key-binding, birthday,
-ledger, and binding-signature break reductions together with the SNARK binding/knowledge-soundness
-stack (the executable forking extractor, the endpoints across all adversary models, and the DL
-capstones) — as build-time obligations expressed through two commands from `Zcash.Meta.AxiomCheck`:
+These boundaries are *checked at build time*, not merely documented. `Zcash.TrustBoundary` is the
+top-level census for reusable library claims — the key-binding, birthday, ledger, and
+binding-signature break reductions together with the fixture-free SNARK
+binding/knowledge-soundness stack (the executable extractors, the endpoints across the modeled
+adversaries, and the DL capstones). `Zcash.lean` imports it directly, so `lake build Zcash` enforces
+that census. Concrete capstones stay with their captures in the fixture-local trust-boundary
+modules and are enforced by `FixtureCheck`. The obligations use two commands from
+`Zcash.Meta.AxiomCheck`:
 
 * `assert_axioms d` fails the build unless `d` rests only on the standard classical axioms
   (`propext`, `Classical.choice`, `Quot.sound`) — in particular no `sorry` and no `native_decide`;
@@ -112,9 +134,9 @@ retains a `#guard_msgs`-pinned `#print axioms fingerprint_matches` documenting p
 compiler-trust axiom `native_decide` adds — on this toolchain a per-declaration axiom
 (`…_native.native_decide.ax_1_1`), where older Lean versions used the global `Lean.ofReduceBool` —
 because for a captured fingerprint match the exact axiom set *is* the claim, the case
-`Zcash.Meta.AxiomCheck` reserves the pinned form for. CI builds both `Zcash` and `FixtureCheck` as
-part of the default targets, and `fingerprint_matches`'s `native_decide` compiles and runs the
-verifier, so anything `noncomputable` on the assembled-verifier path fails the build.
+`Zcash.Meta.AxiomCheck` reserves the pinned form for. CI builds `Zcash` and `FixtureCheck` as
+default targets, and `fingerprint_matches`'s `native_decide` compiles and runs
+the verifier, so anything `noncomputable` on the assembled-verifier path fails the build.
 
 Coined terms and shorthand for the development, including the two conventions above, are
 collected in the [glossary](formal-verification/glossary.md).

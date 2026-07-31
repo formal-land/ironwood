@@ -36,9 +36,12 @@ theorem eval_eq_zero_of_dvd_vanishing {n : ℕ} {c : Polynomial Fp}
 
 /-- The running product as a permutation set: `eval` is this row, `nextEval` is the next row (the
 polynomial composed with the rotation `ω·X`), and `lastEval` is supplied by the caller. -/
-noncomputable def permSetPolys (omega : Fp) (z : Polynomial Fp)
+def permSetPolys (omega : Fp) (z : Polynomial Fp)
     (last : Option (Polynomial Fp)) : PermSetEval (Polynomial Fp) :=
-  { eval := z, nextEval := z.comp (C omega * X), lastEval := last }
+  { eval := z
+    nextEval := ComputablePolynomial.comp z
+      (ComputablePolynomial.mul (ComputablePolynomial.const omega) ComputablePolynomial.X)
+    lastEval := last }
 
 @[simp] theorem permSetPolys_eval (omega : Fp) (z : Polynomial Fp) (last) :
     (permSetPolys omega z last).eval = z := rfl
@@ -46,7 +49,9 @@ noncomputable def permSetPolys (omega : Fp) (z : Polynomial Fp)
 /-- The next-row component really is the next row: at `ωⁱ` it reads `z(ω^{i+1})`. -/
 theorem eval_permSetPolys_nextEval (omega : Fp) (z : Polynomial Fp) (last) (i : ℕ) :
     ((permSetPolys omega z last).nextEval).eval (omega ^ i) = z.eval (omega ^ (i + 1)) := by
-  rw [permSetPolys, eval_comp_rotate, pow_succ, mul_comm]
+  rw [permSetPolys, ComputablePolynomial.comp_eq, ComputablePolynomial.mul_eq,
+    ComputablePolynomial.const_eq, ComputablePolynomial.X_eq,
+    eval_comp_rotate, pow_succ, mul_comm]
 
 /-- **The step rule is the recurrence.** At a row the verifier has switched on, the deployed
 `permChunkExpression` vanishing says exactly that the running product advances by the ratio of the
@@ -99,6 +104,16 @@ theorem running_product_end {lLastP zP : Polynomial Fp} {n : ℕ}
     · exact Or.inr (sub_eq_zero.mp h1)
   · exact absurd h hlast
 
+/-- The inter-set rule `(zNext - zLast)·ℓ₀ = 0` joins two permutation running products at the
+first row. -/
+theorem running_product_chain {l0P zNextP zLastP : Polynomial Fp} {n : ℕ}
+    (hdvd : (X ^ n - 1 : Polynomial Fp) ∣ (zNextP - zLastP) * l0P)
+    {r : Fp} (hr : r ^ n = 1) (hl0 : l0P.eval r ≠ 0) :
+    zNextP.eval r = zLastP.eval r := by
+  have hzero := eval_eq_zero_of_dvd_vanishing hdvd hr
+  rw [eval_mul, eval_sub] at hzero
+  exact sub_eq_zero.mp ((mul_eq_zero.mp hzero).resolve_right hl0)
+
 /-! ## The identity names are distinct
 
 halo2 names cell `(row i, column j)` by `ωⁱ·δ^j`. Distinctness of those names is what turns the
@@ -137,16 +152,32 @@ committed column value at a cell, the permutation column's value there (the `σ`
 identity name `ωⁱ·δ^{offset + j}` halo2 assigns the cell. -/
 
 /-- The committed column's value at row `ωⁱ`, column `j`. -/
-noncomputable def rowValue (omega : Fp) (pairs : List (Polynomial Fp × Polynomial Fp)) :
-    ℕ → ℕ → Fp := fun i j => (pairs.getD j (0, 0)).1.eval (omega ^ i)
+def rowValue (omega : Fp) (pairs : List (Polynomial Fp × Polynomial Fp)) :
+    ℕ → ℕ → Fp := fun i j =>
+  (pairs.getD j (ComputablePolynomial.zero, ComputablePolynomial.zero)).1.eval (omega ^ i)
 
 /-- The permutation column's value at row `ωⁱ`, column `j` — the name `σ` sends the cell to. -/
-noncomputable def rowSigmaName (omega : Fp) (pairs : List (Polynomial Fp × Polynomial Fp)) :
-    ℕ → ℕ → Fp := fun i j => (pairs.getD j (0, 0)).2.eval (omega ^ i)
+def rowSigmaName (omega : Fp) (pairs : List (Polynomial Fp × Polynomial Fp)) :
+    ℕ → ℕ → Fp := fun i j =>
+  (pairs.getD j (ComputablePolynomial.zero, ComputablePolynomial.zero)).2.eval (omega ^ i)
 
 /-- The identity name halo2 assigns to row `ωⁱ`, column `j` of a chunk starting at `off`. -/
-noncomputable def rowName (omega delta : Fp) (off : ℕ) : ℕ → ℕ → Fp :=
+def rowName (omega delta : Fp) (off : ℕ) : ℕ → ℕ → Fp :=
   fun i j => omega ^ i * delta ^ (off + j)
+
+/-- The committed values across a family of variable-width chunks. -/
+def chunkRowValue (omega : Fp)
+    (pairs : ℕ → List (Polynomial Fp × Polynomial Fp)) : ℕ → ℕ → ℕ → Fp :=
+  fun c => rowValue omega (pairs c)
+
+/-- The permutation-column names across a family of variable-width chunks. -/
+def chunkRowSigmaName (omega : Fp)
+    (pairs : ℕ → List (Polynomial Fp × Polynomial Fp)) : ℕ → ℕ → ℕ → Fp :=
+  fun c => rowSigmaName omega (pairs c)
+
+/-- The identity name of a chunked cell, including the chunk's column offset. -/
+def chunkRowName (omega delta : Fp) (chunkLen : ℕ) : ℕ → ℕ → ℕ → Fp :=
+  fun c => rowName omega delta (c * chunkLen)
 
 open Finset in
 /-- **The permutation argument, closed at the deployed constraints.** Every hypothesis is either a
@@ -196,6 +227,76 @@ theorem deployed_perm_copy_constraints
   · simpa using running_product_start hstart (hrow 0) hl0
   · exact running_product_end hend (hrow u) hlast
 
+open Finset in
+/-- **The deployed permutation argument across all chunks.** The chunk step constraints give the
+row recurrences, the verifier's inter-set constraints join their running products, and its unique
+start/end constraints pin the combined product. The conclusion uses one global `σ`, so copy cycles
+may cross chunk boundaries and the final chunk may be shorter than `chunkLen`. -/
+theorem deployed_perm_copy_constraints_all_chunks
+    (omega beta gamma delta : Fp) (chunkLen : ℕ)
+    (z : ℕ → Polynomial Fp)
+    (pairs : ℕ → List (Polynomial Fp × Polynomial Fp))
+    (l0P lLastP lBlindP : Polynomial Fp) {nc n m : ℕ} (hnc : 0 < nc)
+    (σ : Equiv.Perm (ChunkCell nc m (fun c => (pairs c).length)))
+    (hstep : ∀ c < nc, (X ^ n - 1 : Polynomial Fp) ∣
+      permChunkExpression (C beta) (C gamma) X (C delta) chunkLen c
+        (permSetPolys omega (z c) none) (pairs c) lLastP lBlindP)
+    (hchain : ∀ c, c + 1 < nc → (X ^ n - 1 : Polynomial Fp) ∣
+      (z (c + 1) - (z c).comp (C (omega ^ m) * X)) * l0P)
+    (hstart : (X ^ n - 1 : Polynomial Fp) ∣ l0P * (1 - z 0))
+    (hend : (X ^ n - 1 : Polynomial Fp) ∣
+      ((z (nc - 1)) ^ 2 - z (nc - 1)) * lLastP)
+    (hrow : ∀ i : ℕ, (omega ^ i) ^ n = 1)
+    (hactive : ∀ i < m, 1 - (lLastP.eval (omega ^ i) + lBlindP.eval (omega ^ i)) ≠ 0)
+    (hl0 : l0P.eval (omega ^ 0) ≠ 0) (hlast : lLastP.eval (omega ^ m) ≠ 0)
+    (hσ : ∀ c : ChunkCell nc m (fun c => (pairs c).length),
+      chunkRowSigmaName omega pairs c.1 c.2.1 c.2.2
+        = chunkRowName omega delta chunkLen (σ c).1 (σ c).2.1 (σ c).2.2)
+    (hnm : Function.Injective fun c : ChunkCell nc m (fun c => (pairs c).length) =>
+      chunkRowName omega delta chunkLen c.1 c.2.1 c.2.2)
+    (hgoodγ : gamma ∉ szBadSet (linProdDiff
+      ((chunkedCellPairs nc m (fun c => (pairs c).length)
+        (chunkRowValue omega pairs) (chunkRowSigmaName omega pairs)).map
+          (fun p => p.1 + p.2 * beta))
+      ((chunkedCellPairs nc m (fun c => (pairs c).length)
+        (chunkRowValue omega pairs) (chunkRowName omega delta chunkLen)).map
+          (fun p => p.1 + p.2 * beta))))
+    (hgoodβ : ∀ j, beta ∉ szBadSet ((pairProdDiff
+      (chunkedCellPairs nc m (fun c => (pairs c).length)
+        (chunkRowValue omega pairs) (chunkRowSigmaName omega pairs))
+      (chunkedCellPairs nc m (fun c => (pairs c).length)
+        (chunkRowValue omega pairs) (chunkRowName omega delta chunkLen))).coeff j))
+    {c d : ChunkCell nc m (fun c => (pairs c).length)} (hcd : σ.SameCycle c d) :
+    chunkRowValue omega pairs c.1 c.2.1 c.2.2
+        = chunkRowValue omega pairs d.1 d.2.1 d.2.2
+      ∨ ∃ c ∈ range nc, ∃ i ∈ range m, ∃ j ∈ range (pairs c).length,
+          chunkRowValue omega pairs c i j
+            + beta * chunkRowName omega delta chunkLen c i j + gamma = 0 := by
+  let Z : ℕ → ℕ → Fp := fun c i =>
+    if hc : c < nc then (z c).eval (omega ^ i)
+    else (z (nc - 1)).eval (omega ^ m)
+  apply perm_copy_constraints_of_chunked_running_product
+    (fun c => (pairs c).length) Z (chunkRowValue omega pairs)
+    (chunkRowName omega delta chunkLen) (chunkRowSigmaName omega pairs)
+    beta gamma σ hσ hnm
+  · intro c hc i hi
+    simpa [Z, hc, chunkRowValue, chunkRowName, chunkRowSigmaName, rowValue, rowSigmaName, rowName,
+      pow_add, mul_assoc, mul_comm, mul_left_comm] using
+      perm_row_recurrence omega beta gamma delta chunkLen c (z c) none (pairs c)
+        lLastP lBlindP (hstep c hc) (hrow i) (hactive i hi)
+  · intro c hc
+    by_cases hnext : c + 1 < nc
+    · have h := running_product_chain (hchain c hnext) (hrow 0) hl0
+      simpa [Z, hc, hnext, eval_comp_rotate] using h
+    · have hlastc : c = nc - 1 := by omega
+      have hnotLastNext : ¬ nc - 1 + 1 < nc := by omega
+      simp [Z, hlastc, hnotLastNext]
+  · simpa [Z, hnc] using running_product_start hstart (hrow 0) hl0
+  · simpa [Z] using running_product_end hend (hrow m) hlast
+  · exact hgoodγ
+  · exact hgoodβ
+  · exact hcd
+
 
 /-! ## The deployed instantiation
 
@@ -205,12 +306,12 @@ the soundness argument needs: each chunk's set *is* a committed running product 
 rotation that reads the next row. -/
 
 /-- The permutation sets at the polynomial level: chunk `c` carries its running product `z c`. -/
-noncomputable def deployedPermSets (omega : Fp) (nc : ℕ) (z : ℕ → Polynomial Fp)
+def deployedPermSets (omega : Fp) (nc : ℕ) (z : ℕ → Polynomial Fp)
     (lastP : ℕ → Option (Polynomial Fp)) : List (PermSetEval (Polynomial Fp)) :=
   (List.range nc).map (fun c => permSetPolys omega (z c) (lastP c))
 
 /-- The permutation chunks at the polynomial level: each set with its chunk's columns. -/
-noncomputable def deployedPermChunks (omega : Fp) (nc : ℕ) (z : ℕ → Polynomial Fp)
+def deployedPermChunks (omega : Fp) (nc : ℕ) (z : ℕ → Polynomial Fp)
     (lastP : ℕ → Option (Polynomial Fp)) (cols : ℕ → List (Polynomial Fp × Polynomial Fp)) :
     List (PermSetEval (Polynomial Fp) × List (Polynomial Fp × Polynomial Fp)) :=
   (List.range nc).map (fun c => (permSetPolys omega (z c) (lastP c), cols c))
@@ -243,16 +344,6 @@ theorem getLast?_deployedPermSets (omega : Fp) {nc : ℕ} (hnc : 0 < nc) (z : �
   rcases nc with _ | nc
   · exact absurd hnc (lt_irrefl 0)
   · simp [List.range_succ]
-
-/-- The chaining rule at a row: the next chunk's running product starts where this one ended. -/
-theorem running_product_chain {l0P A B : Polynomial Fp} {n : ℕ}
-    (hdvd : (X ^ n - 1 : Polynomial Fp) ∣ (A - B) * l0P) {r : Fp} (hr : r ^ n = 1)
-    (hl0 : l0P.eval r ≠ 0) : A.eval r = B.eval r := by
-  have hzero := eval_eq_zero_of_dvd_vanishing hdvd hr
-  rw [eval_mul, eval_sub] at hzero
-  rcases mul_eq_zero.mp hzero with h | h
-  · exact sub_eq_zero.mp h
-  · exact absurd h hl0
 
 @[simp] theorem length_deployedPermSets (omega : Fp) (nc : ℕ) (z : ℕ → Polynomial Fp)
     (lastP : ℕ → Option (Polynomial Fp)) :
@@ -408,7 +499,7 @@ start, which makes the chunk products one more running product, so the single-ch
 the whole table. -/
 
 /-- The `(value, name)` pair of every cell across chunks of varying widths. -/
-noncomputable def chunkCellPairs (nc m : ℕ) (k : Fin nc → ℕ)
+def chunkCellPairs (nc m : ℕ) (k : Fin nc → ℕ)
     (value nm : ℕ → ℕ → ℕ → Fp) : Multiset (Fp × Fp) :=
   (Finset.univ : Finset ((c : Fin nc) × Fin m × Fin (k c))).val.map
     (fun cell => (value (cell.1 : ℕ) (cell.2.1 : ℕ) (cell.2.2 : ℕ),
@@ -554,15 +645,15 @@ theorem perm_copy_constraints_of_chunk_products {nc m : ℕ} {k : Fin nc → ℕ
 
 /-- The chunk-cell identity name: row `ωⁱ`, global column `c·chunkLen + j`. halo2 offsets every
 chunk by `chunkLen` even when the last chunk is shorter, so the global indices stay distinct. -/
-noncomputable def chunkName (omega delta : Fp) (chunkLen : ℕ) : ℕ → ℕ → ℕ → Fp :=
+def chunkName (omega delta : Fp) (chunkLen : ℕ) : ℕ → ℕ → ℕ → Fp :=
   fun c i j => omega ^ i * delta ^ (c * chunkLen + j)
 
 /-- The committed column value of chunk `c` at a cell. -/
-noncomputable def chunkValue (omega : Fp) (cols : ℕ → List (Polynomial Fp × Polynomial Fp)) :
+def chunkValue (omega : Fp) (cols : ℕ → List (Polynomial Fp × Polynomial Fp)) :
     ℕ → ℕ → ℕ → Fp := fun c => rowValue omega (cols c)
 
 /-- The permutation column value of chunk `c` at a cell — the name `σ` sends the cell to. -/
-noncomputable def chunkSigma (omega : Fp) (cols : ℕ → List (Polynomial Fp × Polynomial Fp)) :
+def chunkSigma (omega : Fp) (cols : ℕ → List (Polynomial Fp × Polynomial Fp)) :
     ℕ → ℕ → ℕ → Fp := fun c => rowSigmaName omega (cols c)
 
 /-- **Name distinctness across chunks.** With every chunk width below `chunkLen`, the global column
